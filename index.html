@@ -13,6 +13,7 @@
     --border:    #334155;
     --blue:      #3b82f6;
     --blue-dim:  #3b82f620;
+    --red:       #ef4444;
     --text:      #f8fafc;
     --text-dim:  #94a3b8;
     --radius:    16px;
@@ -33,6 +34,8 @@
 
   .btn-main { width: 100%; background: var(--blue); color: #fff; border: none; padding: 16px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 15px var(--blue-dim); }
   .btn-main:active { transform: scale(0.98); }
+
+  .error-msg { color: var(--red); font-size: 13px; margin-bottom: 15px; display: none; background: #ef444420; padding: 10px; border-radius: 8px; border: 1px solid var(--red); }
 </style>
 </head>
 <body>
@@ -41,6 +44,8 @@
   <div class="setup-icon">🏥</div>
   <h2>MyVitals Portal</h2>
   <p>Please log into your assigned monitoring unit.</p>
+  
+  <div id="login-error" class="error-msg">Patient or Device ID not found. Please check with your doctor.</div>
   
   <div class="form-group">
     <label>Your Full Name</label>
@@ -55,7 +60,6 @@
 </div>
 
 <script>
-  // Check if already logged in, redirect immediately if true
   window.onload = () => {
     const profile = JSON.parse(localStorage.getItem('myVitalsProfile'));
     if (profile && profile.name && profile.deviceId) {
@@ -66,16 +70,41 @@
   function saveProfile() {
     const name = document.getElementById('patient-name').value.trim();
     const device = document.getElementById('device-id').value.trim();
+    const errorBox = document.getElementById('login-error');
     
+    errorBox.style.display = 'none';
+
     if (!name || !device) { 
-      alert("Please complete credentials."); 
+      errorBox.textContent = "Please fill in both fields.";
+      errorBox.style.display = 'block';
       return; 
     }
     
-    // Save to browser memory
+    // --- AUTHENTICATION VALIDATION ---
+    // 1. Fetch the master patient list created by the Doctor's app
+    const masterListJson = localStorage.getItem('docPortalPatients');
+    let isValidPatient = false;
+
+    if (masterListJson) {
+      const masterList = JSON.parse(masterListJson);
+      
+      // 2. Check if a patient exists with matching Name AND Device ID
+      // .toLowerCase() is used so "John" matches "john"
+      isValidPatient = masterList.some(patient => 
+        patient.name.toLowerCase() === name.toLowerCase() && 
+        patient.deviceId === device
+      );
+    }
+
+    // 3. Reject login if no match is found
+    if (!isValidPatient) {
+      errorBox.textContent = "Access Denied: Name or Device ID not recognized by the hospital system.";
+      errorBox.style.display = 'block';
+      return;
+    }
+
+    // --- SUCCESS ---
     localStorage.setItem('myVitalsProfile', JSON.stringify({ name: name, deviceId: device }));
-    
-    // Redirect to the dashboard page
     window.location.href = "dashboard.html";
   }
 </script>
