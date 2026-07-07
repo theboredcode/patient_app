@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>MyVitals - Patient Portal</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg:        #0f172a; 
+    --panel:     #1e293b;
+    --border:    #334155;
+    --green:     #10b981;
+    --green-dim: #10b98120;
+    --amber:     #f59e0b;
+    --amber-dim: #f59e0b20;
+    --blue:      #3b82f6;
+    --blue-dim:  #3b82f620;
+    --text:      #f8fafc;
+    --text-dim:  #94a3b8;
+    --radius:    16px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+  
+  .view { display: none; flex-direction: column; flex: 1; }
+  .view.active { display: flex; }
+
+  /* ── SELECTION / LINKING SCREEN ── */
+  .setup-wrapper { display: flex; justify-content: center; align-items: center; flex: 1; padding: 20px; }
+  .setup-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 40px 30px; width: 100%; max-width: 380px; box-shadow: 0 15px 35px rgba(0,0,0,0.3); text-align: center; }
+  .setup-icon { font-size: 48px; margin-bottom: 10px; }
+  .setup-card h2 { margin-bottom: 8px; font-weight: 600; font-size: 24px; }
+  .setup-card p { color: var(--text-dim); font-size: 14px; margin-bottom: 24px; }
+  
+  .form-group { margin-bottom: 20px; text-align: left; }
+  .form-group label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;}
+  .form-group input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 14px; border-radius: 10px; font-size: 15px; outline: none; transition: border-color 0.3s; }
+  .form-group input:focus { border-color: var(--blue); }
+
+  .btn-main { width: 100%; background: var(--blue); color: #fff; border: none; padding: 16px; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 15px var(--blue-dim); }
+  .btn-main:active { transform: scale(0.98); }
+
+  /* ── PATIENT DASHBOARD SCREEN ── */
+  header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 10; }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon { width: 36px; height: 36px; background: var(--blue-dim); border: 1px solid var(--blue); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  .logo-text { font-size: 16px; font-weight: 600; letter-spacing: 0.02em; }
+  .logo-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  
+  .header-actions { display: flex; align-items: center; gap: 12px; }
+  .edit-btn { background: none; border: 1px solid var(--border); color: var(--text); padding: 8px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; transition: 0.3s; }
+  .edit-btn:hover { background: var(--border); }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-dim); }
+  .status-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+  .dashboard-content { padding: 24px; max-width: 600px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 20px; }
+  .welcome-banner { text-align: center; margin-bottom: 10px; }
+  .welcome-banner h1 { font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+  .welcome-banner p { color: var(--text-dim); font-size: 14px; }
+
+  /* ECG Rhythm */
+  .ecg-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; position: relative; }
+  .card-label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;}
+  .ecg-container { height: 90px; width: 100%; border-radius: 8px; overflow: hidden; background: #0b1120; }
+  #ecgCanvas { width: 100%; height: 100%; display: block; }
+
+  /* Vitals Displays */
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .metric-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; justify-content: space-between; }
+  .metric-card.bp-card { grid-column: span 2; }
+  
+  .metric-value { font-family: 'JetBrains Mono', monospace; font-size: 42px; font-weight: 700; display: flex; align-items: baseline; gap: 6px; margin: 10px 0; color: var(--text-dim); transition: 0.3s; }
+  .metric-value.live.spo2 { color: var(--blue); text-shadow: 0 0 15px var(--blue-dim); }
+  .metric-value.live.hr { color: var(--green); text-shadow: 0 0 15px var(--green-dim); }
+  
+  .unit { font-size: 16px; opacity: 0.7; font-weight: 400; }
+  .bp-display { display: flex; justify-content: space-around; width: 100%; margin: 10px 0; }
+  .bp-col { text-align: center; }
+  .bp-col span { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px;}
+  .bp-num { font-family: 'JetBrains Mono', monospace; font-size: 36px; font-weight: 700; color: var(--text-dim); }
+  .bp-num.live { color: var(--amber); }
+
+  .card-footer { font-size: 11px; color: var(--text-dim); display: flex; justify-content: space-between; align-items: center;}
+  .btn-measure { background: var(--panel); border: 1px solid var(--amber); color: var(--amber); width: 100%; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 15px; transition: 0.2s; }
+  .btn-measure:active { background: var(--amber-dim); }
+</style>
+</head>
+<body>
+
+<div id="view-setup" class="view active setup-wrapper">
+  <div class="setup-card">
+    <div class="setup-icon">🏥</div>
+    <h2>MyVitals Portal</h2>
+    <p>Please log into your assigned monitoring unit.</p>
+    
+    <div class="form-group">
+      <label>Your Full Name</label>
+      <input type="text" id="patient-name" placeholder="e.g., John Doe" autocomplete="off">
+    </div>
+    <div class="form-group">
+      <label>Device ID (From your Doctor)</label>
+      <input type="text" id="device-id" placeholder="e.g., rig_01" autocomplete="off">
+    </div>
+    
+    <button class="btn-main" onclick="saveProfile()">View My Vitals</button>
+  </div>
+</div>
+
+<div id="view-dashboard" class="view">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🫀</div>
+      <div>
+        <div class="logo-text">MyVitals Home</div>
+        <div class="logo-sub" id="display-device-id">Device: disconnected</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div class="status-dot" id="mqtt-dot"></div>
+      <button class="edit-btn" onclick="editProfile()">Disconnect Unit</button>
+    </div>
+  </header>
+
+  <div class="dashboard-content">
+    <div class="welcome-banner">
+      <h1 id="display-name">Welcome</h1>
+      <p>Your hardware telemetry is streamed below securely.</p>
+    </div>
+
+    <div class="ecg-card">
+      <div class="card-label">Cardiac Rhythm Sync</div>
+      <div class="ecg-container"><canvas id="ecgCanvas"></canvas></div>
+    </div>
+
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="card-label">Oxygen Level (SpO2)</div>
+        <div class="metric-value spo2" id="spo2Num">-- <span class="unit">%</span></div>
+        <div class="card-footer" id="spo2Time">Waiting for telemetry...</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="card-label">Pulse Rate (PR)</div>
+        <div class="metric-value hr" id="hrNum">-- <span class="unit">bpm</span></div>
+        <div class="card-footer" id="hrTime">Waiting for telemetry...</div>
+      </div>
+
+      <div class="metric-card bp-card">
+        <div class="card-label">Blood Pressure Tracking</div>
+        <div class="bp-display">
+          <div class="bp-col"><span>Systolic</span><div class="bp-num" id="sysNum">---</div></div>
+          <div class="bp-col"><span>Diastolic</span><div class="bp-num" id="diaNum">---</div></div>
+        </div>
+        <button class="btn-measure" onclick="triggerBP()">Initiate Pressure Check</button>
+        <div class="card-footer" style="margin-top: 15px; justify-content: center;" id="bpTime">No cuff sequence recorded yet.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// PROFILE RETENTION (Saves monitor link data locally inside client app)
+function loadProfile() {
+  const profile = JSON.parse(localStorage.getItem('myVitalsProfile'));
+  if (profile && profile.name && profile.deviceId) {
+    document.getElementById('patient-name').value = profile.name;
+    document.getElementById('device-id').value = profile.deviceId;
+    applyProfile(profile.name, profile.deviceId);
+    return true;
+  }
+  return false;
+}
+
+function saveProfile() {
+  const name = document.getElementById('patient-name').value.trim();
+  const device = document.getElementById('device-id').value.trim();
+  if (!name || !device) { alert("Please complete credentials."); return; }
+  localStorage.setItem('myVitalsProfile', JSON.stringify({ name: name, deviceId: device }));
+  applyProfile(name, device);
+}
+
+function applyProfile(name, deviceId) {
+  document.getElementById('display-name').textContent = `Hello, ${name}`;
+  document.getElementById('display-device-id').textContent = `Connected Rig: ${deviceId}`;
+  document.getElementById('view-setup').classList.remove('active');
+  document.getElementById('view-dashboard').classList.add('active');
+  setTimeout(resizeCanvas, 120); 
+  connectMQTT(deviceId);
+}
+
+function editProfile() {
+  if(client && client.isConnected()) client.disconnect();
+  document.getElementById('mqtt-dot').classList.remove('connected');
+  document.getElementById('view-dashboard').classList.remove('active');
+  document.getElementById('view-setup').classList.add('active');
+}
+
+// telemetry Broker Stream Engine
+const MQTT_BROKER = 'broker.hivemq.com';
+const MQTT_WS_PORT = 8884;
+let client, currentDeviceId = "", lastBPM = 0;
+
+function connectMQTT(deviceId) {
+  currentDeviceId = deviceId;
+  const clientId = 'PatientPortal_' + Math.random().toString(16).slice(2, 8);
+  
+  client = new Paho.MQTT.Client(MQTT_BROKER, MQTT_WS_PORT, '/mqtt', clientId);
+  
+  client.onConnectionLost = (res) => {
+    document.getElementById('mqtt-dot').classList.remove('connected');
+    if (document.getElementById('view-dashboard').classList.contains('active')) {
+      setTimeout(() => connectMQTT(currentDeviceId), 5000);
+    }
+  };
+  
+  client.onMessageArrived = (msg) => {
+    try {
+      const data = JSON.parse(msg.payloadString);
+      const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+      const f = data.finger === true;
+      
+      if (f && data.spo2 != null) {
+        document.getElementById('spo2Num').innerHTML = `${parseFloat(data.spo2).toFixed(0)} <span class="unit">%</span>`;
+        document.getElementById('spo2Num').classList.add('live');
+        document.getElementById('spo2Time').textContent = `Synchronized at ${time}`;
+      } else if (!f) {
+        document.getElementById('spo2Num').classList.remove('live');
+      }
+      
+      if (f && data.hr != null) {
+        lastBPM = parseFloat(data.hr);
+        document.getElementById('hrNum').innerHTML = `${lastBPM.toFixed(0)} <span class="unit">bpm</span>`;
+        document.getElementById('hrNum').classList.add('live');
+        document.getElementById('hrTime').textContent = `Synchronized at ${time}`;
+      } else if (!f) {
+        document.getElementById('hrNum').classList.remove('live');
+      }
+
+      if (data.sys != null && data.dia != null) {
+        document.getElementById('sysNum').textContent = data.sys;
+        document.getElementById('diaNum').textContent = data.dia;
+        document.getElementById('sysNum').classList.add('live');
+        document.getElementById('diaNum').classList.add('live');
+        document.getElementById('bpTime').textContent = `Cuff Sequence Completed: ${time}`;
+      }
+    } catch(e) {}
+  };
+  
+  client.connect({
+    useSSL: true,
+    onSuccess: () => {
+      document.getElementById('mqtt-dot').classList.add('connected');
+      client.subscribe(`crescent/vitals/${deviceId}/all`);
+    }
+  });
+}
+
+function triggerBP() {
+  if (client && client.isConnected()) {
+    const msg = new Paho.MQTT.Message("trigger");
+    msg.destinationName = `crescent/vitals/${currentDeviceId}/trigger_bp`;
+    client.send(msg);
+    
+    const btn = document.querySelector('.btn-measure');
+    btn.textContent = "Inflating Cuff...";
+    btn.disabled = true;
+    
+    setTimeout(() => {
+      btn.textContent = "Initiate Pressure Check";
+      btn.disabled = false;
+    }, 6000);
+  } else {
+    alert("No hardware channel synchronized.");
+  }
+}
+
+// GRAPHICS ENGINE (Rhythm wave logic matching heart rate feed)
+const canvas = document.getElementById('ecgCanvas'), ctx = canvas.getContext('2d');
+let ecgPoints = [];
+function resizeCanvas() { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; }
+window.addEventListener('resize', resizeCanvas);
+
+function drawECG() {
+  requestAnimationFrame(drawECG);
+  if (!document.getElementById('view-dashboard').classList.contains('active')) return;
+
+  const w = canvas.width, h = canvas.height, mid = h/2, now = Date.now(), win = 3000;
+  ctx.clearRect(0,0,w,h);
+  
+  ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1; 
+  for(let x=0;x<w;x+=30) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+  for(let y=0;y<h;y+=30) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+
+  if (ecgPoints.length > 1) {
+    ecgPoints = ecgPoints.filter(p => (now - p.t) < win);
+    ctx.beginPath(); ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2.5;
+    ctx.shadowColor = '#10b981'; ctx.shadowBlur = 4;
+    let s = false;
+    for (const p of ecgPoints) { let x = w - ((now - p.t)/win)*w, y = mid - (p.v*(h/80)); if(!s){ctx.moveTo(x,y);s=true;}else{ctx.lineTo(x,y);} }
+    ctx.stroke(); ctx.shadowBlur = 0;
+  }
+}
+
+function injectBeat() {
+  const now = Date.now(), p = lastBPM>0?(60000/lastBPM):800;
+  const s = [0,0,0,0,0,2,4,2,0,0,0,0,-2,30,-8,0,0,0,0,0,0,4,6,4,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+  s.forEach((v,i)=>ecgPoints.push({t:now+(i/s.length)*p,v}));
+}
+
+let lastInj = 0;
+setInterval(() => { if(lastBPM>0 && Date.now()-lastInj > 60000/lastBPM) { injectBeat(); lastInj=Date.now(); } }, 50);
+
+window.onload = () => { if(!loadProfile()) resizeCanvas(); drawECG(); };
+</script>
+</body>
+</html>
