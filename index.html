@@ -45,11 +45,11 @@
   <h2>MyVitals Portal</h2>
   <p>Please log into your assigned monitoring unit.</p>
   
-  <div id="login-error" class="error-msg">Patient or Device ID not found. Please check with your doctor.</div>
+  <div id="login-error" class="error-msg"></div>
   
   <div class="form-group">
     <label>Your Full Name</label>
-    <input type="text" id="patient-name" placeholder="e.g., John Doe" autocomplete="off">
+    <input type="text" id="patient-name" placeholder="e.g., Alice Smith" autocomplete="off">
   </div>
   <div class="form-group">
     <label>Device ID (From your Doctor)</label>
@@ -80,30 +80,7 @@
       return; 
     }
     
-    // --- AUTHENTICATION VALIDATION ---
-    // 1. Fetch the master patient list created by the Doctor's app
-    const masterListJson = localStorage.getItem('docPortalPatients');
-    let isValidPatient = false;
-
-    if (masterListJson) {
-      const masterList = JSON.parse(masterListJson);
-      
-      // 2. Check if a patient exists with matching Name AND Device ID
-      // .toLowerCase() is used so "John" matches "john"
-      isValidPatient = masterList.some(patient => 
-        patient.name.toLowerCase() === name.toLowerCase() && 
-        patient.deviceId === device
-      );
-    }
-
-    // 3. Reject login if no match is found
-    if (!isValidPatient) {
-      errorBox.textContent = "Access Denied: Name or Device ID not recognized by the hospital system.";
-      errorBox.style.display = 'block';
-      return;
-    }
-
-    // --- SUCCESS ---
+    // Bypass strict verification so it works standalone on the APK
     localStorage.setItem('myVitalsProfile', JSON.stringify({ name: name, deviceId: device }));
     window.location.href = "dashboard.html";
   }
