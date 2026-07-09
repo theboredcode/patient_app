@@ -63,7 +63,8 @@
   window.onload = () => {
     const profile = JSON.parse(localStorage.getItem('myVitalsProfile'));
     if (profile && profile.name && profile.deviceId) {
-      window.location.href = "dashboard.html";
+      // Send data through the URL to prevent the loop
+      window.location.replace(`dashboard.html?name=${encodeURIComponent(profile.name)}&device=${encodeURIComponent(profile.deviceId)}`);
     }
   };
 
@@ -80,9 +81,9 @@
       return; 
     }
     
-    // Bypass strict verification so it works standalone on the APK
+    // Save to memory, but primarily pass via URL for the APK
     localStorage.setItem('myVitalsProfile', JSON.stringify({ name: name, deviceId: device }));
-    window.location.href = "dashboard.html";
+    window.location.replace(`dashboard.html?name=${encodeURIComponent(name)}&device=${encodeURIComponent(device)}`);
   }
 </script>
 </body>
